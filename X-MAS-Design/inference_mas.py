@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import argparse
 import threading
 import concurrent.futures
@@ -69,6 +70,7 @@ if __name__ == "__main__":
     parser.add_argument("--test_dataset_name", type=str, default="example_math", help="The dataset to be used for testing.")
     parser.add_argument("--output_path", type=str, default=None, help="Path to the output file.")
     parser.add_argument("--sample_num", type=int, default=500)
+    parser.add_argument("--resume", action="store_true", help="Skip samples already in output_path. Default: back up output_path and start fresh.")
 
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--sequential", action="store_true")
@@ -113,14 +115,19 @@ if __name__ == "__main__":
         else:
             sample_num = args.sample_num
         test_dataset = test_dataset[:sample_num] if sample_num > 0 else test_dataset
-        test_dataset = reserve_unprocessed(output_path, test_dataset)
+        if args.resume:
+            test_dataset = reserve_unprocessed(output_path, test_dataset)
+        elif os.path.exists(output_path):
+            backup_path = f"{output_path}.{time.strftime('%Y%m%d-%H%M%S')}.bak"
+            os.rename(output_path, backup_path)
+            print(f">> Existing output moved to {backup_path}")
         print(f">> After filtering: {len(test_dataset)} samples")
         
         lock = threading.Lock()
         # inference the mas
         if args.sequential:
             for sample in test_dataset:
-                process_sample(args, general_config, sample, output_path)
+                process_sample(args, general_config, sample, output_path, lock)
         else:
             max_workers = model_api_config[args.model_name]["max_workers"]
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
